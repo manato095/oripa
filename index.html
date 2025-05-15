@@ -46,11 +46,13 @@
   <button onclick="addLosePattern()">＋ ハズレパターン追加</button>
 
   <h3>ラストワン賞</h3>
-  <div class="lastone-settings">
-    <label><input type="checkbox" id="useLastOne"> ラストワン賞を使用する</label>
+<div class="lastone-settings">
+  <label><input type="checkbox" id="useLastOne"> ラストワン賞を使用する</label>
+  <div class="pattern-row">
     <input placeholder="表示金額" id="lastOneValue" type="number">
     <input placeholder="原価率" id="lastOneRate" type="number" step="0.01">
   </div>
+</div>
 
   <label>プレイヤー数（最大10）</label>
   <input id="playerCount" value="5" type="number" onchange="renderPlayerSettings()">
