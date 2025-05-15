@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>オリパ収支シミュレーター（ラストワン賞対応）</title>
+  <style>
+    body { font-family: sans-serif; margin: 20px; background: #f9f9f9; }
+    input, select { width: 100%; padding: 10px; margin: 5px 0; font-size: 1em; box-sizing: border-box; }
+    label { font-weight: bold; display: block; margin-top: 15px; }
+    button { margin-top: 15px; padding: 10px; font-size: 1em; background: #007bff; color: white; border: none; border-radius: 5px; }
+    button:hover { background: #0056b3; }
+    #results { margin-top: 20px; padding: 15px; background: white; font-size: 1.1em; border-radius: 8px; box-shadow: 0 0 5px rgba(0,0,0,0.1); }
+    .player-settings, .win-settings, .lose-settings, .lastone-settings { background: #fff; padding: 10px; margin-top: 10px; border-radius: 6px; box-shadow: 0 0 3px rgba(0,0,0,0.1); }
+    pre { background: #eee; padding: 10px; border-radius: 5px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>オリパ収支シミュレーター</h1>
+
+  <label>賭け金（1口）</label>
+  <input id="price" value="1000" type="number">
+
+  <label>共通原価率（空欄でもOK）</label>
+  <input id="globalRate" value="0.9" type="number" step="0.01">
+
+  <label>目標利益率（%）</label>
+  <input id="targetProfitRate" value="10" type="number">
+
+  <h3>当たりパターン</h3>
+  <div id="winPatterns"></div>
+  <button onclick="addWinPattern()">＋ 当たりパターン追加</button>
+
+  <h3>ハズレパターン</h3>
+  <div id="losePatterns"></div>
+  <button onclick="addLosePattern()">＋ ハズレパターン追加</button>
+
+  <h3>ラストワン賞</h3>
+  <div class="lastone-settings">
+    <label><input type="checkbox" id="useLastOne"> ラストワン賞を使用する</label>
+    <input placeholder="表示金額" id="lastOneValue" type="number">
+    <input placeholder="原価率" id="lastOneRate" type="number" step="0.01">
+  </div>
+
+  <label>プレイヤー数（最大10）</label>
+  <input id="playerCount" value="5" type="number" onchange="renderPlayerSettings()">
+
+  <label>シミュレーション回数</label>
+  <input id="simCount" value="100" type="number">
+
+  <div id="playerSettings"></div>
+
+  <button onclick="runSimulation()">シミュレーション開始</button>
+
+  <div id="results"></div>
+  <script>
+  let winPatternCount = 0;
+  let losePatternCount = 0;
+
+  function addWinPattern() {
+    const container = document.getElementById("winPatterns");
+    const div = document.createElement("div");
+    div.className = "win-settings";
+    div.innerHTML = `
+      <label>当たりパターン ${winPatternCount + 1}</label>
+      <input placeholder="表示金額" id="winValue${winPatternCount}" type="number">
+      <input placeholder="本数" id="winCount${winPatternCount}" type="number">
+      <input placeholder="原価率（空欄なら共通）" id="winRate${winPatternCount}" type="number" step="0.01">
+    `;
+    container.appendChild(div);
+    winPatternCount++;
+  }
+
+  function addLosePattern() {
+    const container = document.getElementById("losePatterns");
+    const div = document.createElement("div");
+    div.className = "lose-settings";
+    div.innerHTML = `
+      <label>ハズレパターン ${losePatternCount + 1}</label>
+      <input placeholder="表示金額" id="loseValue${losePatternCount}" type="number">
+      <input placeholder="本数" id="loseCount${losePatternCount}" type="number">
+      <input placeholder="原価率（空欄なら1.0）" id="loseRate${losePatternCount}" type="number" step="0.01">
+    `;
+    container.appendChild(div);
+    losePatternCount++;
+  }
+
+  function renderPlayerSettings() {
+    const count = parseInt(document.getElementById("playerCount").value);
+    const container = document.getElementById("playerSettings");
+    container.innerHTML = "";
+
+    for (let i = 0; i < count; i++) {
+      const div = document.createElement("div");
+      div.className = "player-settings";
+      div.innerHTML = `
+        <label>プレイヤー${i + 1}：動作タイプ</label>
+        <select id="type${i}">
+          <option value="escape">勝ち逃げ</option>
+          <option value="fixed">固定口数</option>
+        </select>
+        <label>最大口数（固定タイプ用）</label>
+        <input type="number" id="pulls${i}" value="2">
+        <label>撤退ライン（マイナス収支）</label>
+        <input type="number" id="lossLimit${i}" value="">
+        <label>勝ち逃げライン（プラス収支）</label>
+        <input type="number" id="winLimit${i}" value="">
+      `;
+      container.appendChild(div);
+    }
+  }
+
+  function runSimulation() {
+    const price = parseInt(document.getElementById("price").value);
+    const globalRate = parseFloat(document.getElementById("globalRate").value) || 1.0;
+    const playerCount = parseInt(document.getElementById("playerCount").value);
+    const simCount = parseInt(document.getElementById("simCount").value);
+    const targetProfitRate = parseFloat(document.getElementById("targetProfitRate").value) || 0;
+
+    const useLastOne = document.getElementById("useLastOne").checked;
+    const lastOneValue = parseInt(document.getElementById("lastOneValue").value) || 0;
+    const lastOneRate = parseFloat(document.getElementById("lastOneRate").value) || globalRate;
+    const lastOneCost = lastOneValue * lastOneRate;
+
+    const winPool = [];
+    for (let i = 0; i < winPatternCount; i++) {
+      const value = parseInt(document.getElementById(`winValue${i}`).value);
+      const count = parseInt(document.getElementById(`winCount${i}`).value);
+      const rate = parseFloat(document.getElementById(`winRate${i}`).value);
+      const cost = value * (rate || globalRate);
+      for (let j = 0; j < count; j++) winPool.push(cost);
+    }
+
+    const losePool = [];
+    for (let i = 0; i < losePatternCount; i++) {
+      const value = parseInt(document.getElementById(`loseValue${i}`).value);
+      const count = parseInt(document.getElementById(`loseCount${i}`).value);
+      const rate = parseFloat(document.getElementById(`loseRate${i}`).value);
+      const cost = value * (rate || 1.0);
+      for (let j = 0; j < count; j++) losePool.push(cost);
+    }
+
+    let operatorWins = 0;
+    let lossCount = 0;
+    let targetProfitHits = 0;
+    let emptyPackCount = 0;
+    let totalRemaining = 0;
+    let totalRevenueSum = 0;
+    let totalCostSum = 0;
+    let totalProfitSum = 0;
+    let totalPulledSum = 0;
+    let exampleDetail = "";
+
+    for (let s = 0; s < simCount; s++) {
+      const pool = [...winPool, ...losePool];
+      shuffle(pool);
+
+      const playerConfigs = [];
+      for (let i = 0; i < playerCount; i++) {
+        const type = document.getElementById(`type${i}`).value;
+        const pulls = parseInt(document.getElementById(`pulls${i}`).value);
+        const lossLimit = parseInt(document.getElementById(`lossLimit${i}`).value) || null;
+        const winLimit = parseInt(document.getElementById(`winLimit${i}`).value) || null;
+        playerConfigs.push({ type, pulls, lossLimit, winLimit });
+      }
+
+      let opened = 0;
+      let totalRevenue = 0;
+      let totalCost = 0;
+      let detail = "";
+      let lastPlayerIndex = -1;
+
+      for (let p = 0; p < playerConfigs.length; p++) {
+        const config = playerConfigs[p];
+        let userCost = 0;
+        let userReturn = 0;
+        let pulls = 0;
+        const maxPulls = config.type === "fixed" ? config.pulls : pool.length - opened;
+
+        while (opened < pool.length && pulls < maxPulls) {
+          userCost += price;
+          userReturn += pool[opened];
+          pulls++;
+          opened++;
+          if (opened === pool.length) lastPlayerIndex = p;
+
+          const profit = userReturn - userCost;
+          if (config.lossLimit !== null && profit < config.lossLimit) break;
+          if (config.type === "escape" && config.winLimit !== null && profit >= config.winLimit) break;
+          if (config.type === "escape" && config.winLimit === null && profit > 0) break;
+        }
+
+        // Add to player's return if they get Last One prize
+        if (s === 0 && lastPlayerIndex === p && useLastOne) {
+          userReturn += lastOneCost;
+        }
+
+        totalRevenue += userCost;
+        totalCost += userReturn;
+
+        if (s === 0) {
+          detail += `プレイヤー${p + 1}：${pulls}口 / 支払 ${userCost.toLocaleString()}円 / 回収 ${userReturn.toLocaleString()}円 / 収支 ${(userReturn - userCost).toLocaleString()}円\n`;
+        }
+
+        if (opened >= pool.length) break;
+      }
+
+      const remaining = winPool.length + losePool.length - opened;
+
+      // ラストワン賞原価追加（プレイヤーには加算済）
+      if (remaining === 0 && useLastOne) {
+        totalCost += lastOneCost;
+      }
+
+      const profit = totalRevenue - totalCost;
+      const profitRate = totalRevenue > 0 ? (profit / totalRevenue * 100) : 0;
+
+      if (profit > 0) operatorWins++;
+      if (profit < 0) lossCount++;
+      if (profitRate >= targetProfitRate) targetProfitHits++;
+      if (remaining === 0) emptyPackCount++;
+
+      totalRemaining += remaining;
+      totalRevenueSum += totalRevenue;
+      totalCostSum += totalCost;
+      totalProfitSum += profit;
+      totalPulledSum += opened;
+
+      if (s === 0) {
+        exampleDetail += detail;
+        exampleDetail += `\n【運営収支】\n総売上：${totalRevenue.toLocaleString()}円\n原価合計：${totalCost.toLocaleString()}円\n利益：${profit.toLocaleString()}円\n利益率：${profitRate.toFixed(1)}%\n引かれた口数：${opened}口\n残り口数：${remaining}口\n`;
+        if (useLastOne && remaining === 0) {
+          exampleDetail += `※ラストワン賞（原価 ${lastOneCost.toLocaleString()}円）付与済み\n`;
+        }
+      }
+    }
+
+    const avgRemaining = totalRemaining / simCount;
+    const avgRevenue = totalRevenueSum / simCount;
+    const avgCost = totalCostSum / simCount;
+    const avgProfit = totalProfitSum / simCount;
+    const avgRate = avgRevenue > 0 ? (avgProfit / avgRevenue * 100) : 0;
+    const avgPulled = totalPulledSum / simCount;
+
+    document.getElementById("results").innerHTML =
+      `<strong>運営が勝った回数:</strong> ${operatorWins} / ${simCount}<br>
+       <strong>勝率:</strong> ${(operatorWins / simCount * 100).toFixed(1)}%<br><br>
+       <strong>1回目の詳細（プレイヤー損益＋運営収支）:</strong><br><pre>${exampleDetail}</pre>
+       <strong>シミュレーション全体統計：</strong><br><pre>
+平均
+売上：${Math.round(avgRevenue).toLocaleString()}円
+原価：${Math.round(avgCost).toLocaleString()}円
+利益：${Math.round(avgProfit).toLocaleString()}円
+利益率：${avgRate.toFixed(1)}%
+引かれた口数：${avgPulled.toFixed(2)}口
+残り口数：${avgRemaining.toFixed(2)}口
+
+赤字になった回数：${lossCount} / ${simCount}
+目標利益率以上の回数：${targetProfitHits} / ${simCount}
+完売数：${emptyPackCount} / ${simCount}
+</pre>`;
+  }
+
+  function shuffle(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [array[i], array[j]] = [array[j], array[i]];
+    }
+  }
+
+  renderPlayerSettings();
+  addWinPattern();
+  addLosePattern();
+</script>
+</body>
+</html>
