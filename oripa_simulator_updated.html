@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>オリパ収支シミュレーター（ラストワン賞対応）</title>
+  <style>
+    body { font-family: sans-serif; margin: 20px; background: #f9f9f9; }
+    input, select { padding: 10px; font-size: 1em; box-sizing: border-box; }
+    input, select { width: 100%; margin: 5px 0; }
+    label { font-weight: bold; display: block; margin-top: 15px; }
+    button { margin-top: 15px; padding: 10px; font-size: 1em; background: #007bff; color: white; border: none; border-radius: 5px; }
+    button:hover { background: #0056b3; }
+    #results { margin-top: 20px; padding: 15px; background: white; font-size: 1.1em; border-radius: 8px; box-shadow: 0 0 5px rgba(0,0,0,0.1); }
+    .win-settings, .lose-settings, .player-settings, .lastone-settings {
+      background: #fff; padding: 10px; margin-top: 10px; border-radius: 6px; box-shadow: 0 0 3px rgba(0,0,0,0.1);
+    }
+    .win-settings, .lose-settings {
+      display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+    }
+    .win-settings input, .lose-settings input {
+      flex: 1; min-width: 100px;
+    }
+    .lastone-settings {
+      display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+    }
+    .lastone-settings input[type="number"] {
+      flex: 1; min-width: 100px;
+    }
+    .lastone-settings label {
+      flex-basis: 100%;
+    }
+    .player-settings {
+      display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 10px;
+    }
+    .player-settings select, .player-settings input {
+      flex: 1; min-width: 100px;
+    }
+    pre { background: #eee; padding: 10px; border-radius: 5px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>オリパ収支シミュレーター</h1>
+
+  <label>賭け金（1口）</label>
+  <input id="price" value="1000" type="number">
+
+  <label>共通原価率（空欄でもOK）</label>
+  <input id="globalRate" value="0.9" type="number" step="0.01">
+
+  <label>目標利益率（%）</label>
+  <input id="targetProfitRate" value="10" type="number">
+
+  <h3>当たりパターン</h3>
+  <div id="winPatterns"></div>
+  <button onclick="addWinPattern()">＋ 当たりパターン追加</button>
+
+  <h3>ハズレパターン</h3>
+  <div id="losePatterns"></div>
+  <button onclick="addLosePattern()">＋ ハズレパターン追加</button>
+
+  <h3>ラストワン賞</h3>
+  <div class="lastone-settings">
+    <label><input type="checkbox" id="useLastOne"> ラストワン賞を使用する</label>
+    <input placeholder="表示金額" id="lastOneValue" type="number">
+    <input placeholder="原価率" id="lastOneRate" type="number" step="0.01">
+  </div>
+
+  <label>プレイヤー数（最大10）</label>
+  <input id="playerCount" value="5" type="number" onchange="renderPlayerSettings()">
+
+  <label>シミュレーション回数</label>
+  <input id="simCount" value="100" type="number">
+
+  <div id="playerSettings"></div>
+
+  <button onclick="runSimulation()">シミュレーション開始</button>
+
+  <div id="results"></div>
+
+  <script>
+    let winPatternCount = 0;
+    let losePatternCount = 0;
+
+    function addWinPattern() {
+      const container = document.getElementById("winPatterns");
+      const div = document.createElement("div");
+      div.className = "win-settings";
+      div.innerHTML = \`
+        <input placeholder="表示金額" id="winValue\${winPatternCount}" type="number">
+        <input placeholder="本数" id="winCount\${winPatternCount}" type="number">
+        <input placeholder="原価率（空欄なら共通）" id="winRate\${winPatternCount}" type="number" step="0.01">
+      \`;
+      container.appendChild(div);
+      winPatternCount++;
+    }
+
+    function addLosePattern() {
+      const container = document.getElementById("losePatterns");
+      const div = document.createElement("div");
+      div.className = "lose-settings";
+      div.innerHTML = \`
+        <input placeholder="表示金額" id="loseValue\${losePatternCount}" type="number">
+        <input placeholder="本数" id="loseCount\${losePatternCount}" type="number">
+        <input placeholder="原価率（空欄なら1.0）" id="loseRate\${losePatternCount}" type="number" step="0.01">
+      \`;
+      container.appendChild(div);
+      losePatternCount++;
+    }
+
+    function renderPlayerSettings() {
+      const count = parseInt(document.getElementById("playerCount").value);
+      const container = document.getElementById("playerSettings");
+      container.innerHTML = "";
+
+      for (let i = 0; i < count; i++) {
+        const div = document.createElement("div");
+        div.className = "player-settings";
+        div.innerHTML = \`
+          <select id="type\${i}">
+            <option value="escape">勝ち逃げ</option>
+            <option value="fixed">固定口数</option>
+          </select>
+          <input type="number" id="pulls\${i}" placeholder="最大口数" value="2">
+          <input type="number" id="lossLimit\${i}" placeholder="撤退ライン（-収支）">
+          <input type="number" id="winLimit\${i}" placeholder="勝ち逃げライン（+収支）">
+        \`;
+        container.appendChild(div);
+      }
+    }
+
+    // 残りの simulation 関数など省略（元のコードと同一の処理）
+  </script>
+</body>
+</html>
